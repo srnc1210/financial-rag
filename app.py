@@ -27,29 +27,57 @@ def download_once_from_drive(file_id: str, dest_path: str) -> str:
 
 @st.cache_data(show_spinner=True)
 def load_vector_db(json_path: str):
-    # Memory-aware loader: avoid holding the whole dict any longer than needed
-    with open(json_path, "r") as f:
-        vector_db = json.load(f)
+    """
+    Memory-safe stream loader for a dict-of-lists JSON:
+      { "docA": [ {chunk_text, embed, chunk_id, ...}, ... ],
+        "docB": [ ... ], ... }
+    """
+    import ijson
 
-    flat_chunks, all_embeddings, chunk_metadata = [], [], []
+    flat_chunks = []
+    all_embeddings = []
+    chunk_metadata = []
     seen = set()
-    for doc_name, chunks in vector_db.items():
-        for ch in chunks:
-            txt = ch["chunk_text"]
-            if txt in seen:
-                continue
-            seen.add(txt)
-            flat_chunks.append(txt)
-            all_embeddings.append(ch["embed"])
-            chunk_metadata.append({
-                "source_document": doc_name,
-                "chunk_id": ch.get("chunk_id"),
-            })
 
+    total_chunks = 0
+    progress = st.progress(0, text="Parsing VectorDB.json...")
+
+    # ijson.kvitems(root, 'item') does not apply here since top-level is an object.
+    # We'll iterate over each (doc_name -> chunks array) pair:
+    with open(json_path, "rb") as f:
+        for doc_name, chunks_iter in ijson.kvitems(f, ""):
+            # chunks_iter is the full list for this doc; iterate its items incrementally:
+            for ch in chunks_iter:
+                total_chunks += 1
+                if total_chunks % 5000 == 0:
+                    # lightweight progress tick; won't be exact but helps UX
+                    progress.progress(min(0.95, (total_chunks % 100000) / 100000), text=f"Parsing... {total_chunks:,} chunks")
+
+                txt = ch.get("chunk_text")
+                if not txt or txt in seen:
+                    continue
+                seen.add(txt)
+
+                emb = ch.get("embed")
+                if not emb:  # guard against malformed entries
+                    continue
+
+                flat_chunks.append(txt)
+                all_embeddings.append(emb)
+                chunk_metadata.append({
+                    "source_document": doc_name,
+                    "chunk_id": ch.get("chunk_id"),
+                })
+
+    progress.progress(1.0, text=f"Parsed {len(flat_chunks):,} unique chunks")
+
+    # Convert to float32 for FAISS
     vecs = np.asarray(all_embeddings, dtype=np.float32)
-    # free original dict ASAP
-    del vector_db, all_embeddings, seen
+
+    # Free temps
+    del all_embeddings, seen
     return flat_chunks, vecs, chunk_metadata
+
 
 @st.cache_resource(show_spinner=True)
 def build_faiss_index(vectors: np.ndarray):
