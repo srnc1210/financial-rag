@@ -7,6 +7,7 @@ from huggingface_hub import InferenceClient
 import re
 import nltk
 import gdown
+import os
 
 # --- Configuration ---
 # Ensure these variables match the ones in your notebook
