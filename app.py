@@ -6,20 +6,37 @@ from sentence_transformers import SentenceTransformer
 from huggingface_hub import InferenceClient
 import re
 import nltk
+import gdown
 
 # --- Configuration ---
 # Ensure these variables match the ones in your notebook
-file_path = '/content/drive/MyDrive/Final Project/Data' # shreya
-vector_file_name = 'VectorDB.json'
+# Google Drive file ID for your VectorDB.json
+FILE_ID = "17vqN_pUH3jov1E_PQfs4YrwhSvmfLYoo"
+# Where to put the downloaded file in Streamlit Cloud (ephemeral, but fine)
+DEST_PATH = "/tmp/VectorDB.json"
 EMBEDDING_MODEL = "sujet-ai/Marsilia-Embeddings-EN-Large"
 LLM_MODEL = "meta-llama/Llama-3.1-8B-Instruct" # Specify your LLM model
 
-
 # --- Load Data and Model ---
+@st.cache_resource(show_spinner=False)
+def download_once_from_drive(file_id: str, dest_path: str) -> str:
+    """
+    Downloads the file from Google Drive exactly once per app process.
+    Uses gdown with a public link; if the file already exists, it skips.
+    """
+    if not os.path.exists(dest_path):
+        url = f"https://drive.google.com/uc?id={file_id}"
+        with st.spinner("Downloading vector DB from Google Drive..."):
+            gdown.download(url, dest_path, quiet=False)
+        if not os.path.exists(dest_path) or os.path.getsize(dest_path) == 0:
+            raise RuntimeError("Download failed or produced an empty file.")
+    return dest_path
+
+
 @st.cache_resource # Cache the model and data loading
 def load_resources():
     # Load Vector DB
-    path = f'{file_path}/{vector_file_name}'
+    path = DEST_PATH
     with open(path, "r") as file:
         Vector_db = json.load(file)
 
