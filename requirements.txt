@@ -4,3 +4,4 @@ rouge_score
 nltk 
 streamlit
 gdown
+ijson
