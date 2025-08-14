@@ -36,7 +36,7 @@ def download_once_from_drive(file_id: str, dest_path: str) -> str:
 @st.cache_resource # Cache the model and data loading
 def load_resources():
     # Load Vector DB
-    path = DEST_PATH
+    path = download_once_from_drive(FILE_ID, DEST_PATH)
     with open(path, "r") as file:
         Vector_db = json.load(file)
 
